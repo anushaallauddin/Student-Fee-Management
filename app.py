@@ -13,7 +13,24 @@ st.set_page_config(
     page_icon="📚",
     layout="wide"
 )
+st.markdown(
+    """
+    <style>
+    
+    div[data-testid="stToggle"] [role="switch"] {
+        background-color: #ef4444 !important;
+        border-color: #ef4444 !important;
+    }
 
+    div[data-testid="stToggle"] [role="switch"][aria-checked="true"] {
+        background-color: #22c55e !important;
+        border-color: #22c55e !important;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # =========================================================
 # DATABASE - SUPABASE
@@ -24,7 +41,10 @@ supabase = create_client(
     st.secrets["SUPABASE_KEY"]
 )
 
+key = st.secrets["SUPABASE_KEY"]
 
+st.write("KEY TYPE:", key[:20])
+st.write("KEY LENGTH:", len(key))
 # =========================================================
 # MONTHS / YEARS
 # =========================================================
@@ -67,9 +87,9 @@ page = st.sidebar.radio(
         "Monthly Report",
         "Add Student",
         "Edit Student",
-        "Record Fee",
+
         "Payment Records",
-        "Edit/Delete Payment"
+       
     ]
 )
 
@@ -83,11 +103,10 @@ if page == "Dashboard":
     st.title("📊 Student Fee Dashboard")
 
     st.write(
-        "Manage students, monthly fees and payment records."
+        "Manage monthly student fees using the payment toggle."
     )
 
     st.divider()
-
 
     # -----------------------------------------------------
     # MONTH / YEAR
@@ -115,7 +134,6 @@ if page == "Dashboard":
 
     st.divider()
 
-
     # -----------------------------------------------------
     # SEARCH STUDENT
     # -----------------------------------------------------
@@ -128,23 +146,6 @@ if page == "Dashboard":
         key="dashboard_search"
     )
 
-
-    # -----------------------------------------------------
-    # GET TOTAL STUDENTS
-    # -----------------------------------------------------
-
-    students_count_response = (
-        supabase
-        .table("students")
-        .select("id")
-        .execute()
-    )
-
-    total_students = len(
-        students_count_response.data or []
-    )
-
-
     # -----------------------------------------------------
     # GET STUDENTS
     # -----------------------------------------------------
@@ -152,17 +153,14 @@ if page == "Dashboard":
     students_response = (
         supabase
         .table("students")
-        .select(
-            "id, name, subject, monthly_fee"
-        )
+        .select("id, name, subject, monthly_fee")
         .order("name")
         .execute()
     )
 
-    students_data = (
-        students_response.data or []
-    )
+    students_data = students_response.data or []
 
+    total_students = len(students_data)
 
     # -----------------------------------------------------
     # GET PAYMENTS FOR SELECTED MONTH/YEAR
@@ -171,68 +169,30 @@ if page == "Dashboard":
     payments_response = (
         supabase
         .table("payments")
-        .select(
-            "student_id, amount"
-        )
+        .select("id, student_id, amount")
         .eq("month", selected_month)
         .eq("year", selected_year)
         .execute()
     )
 
-    payments_data = (
-        payments_response.data or []
-    )
-
+    payments_data = payments_response.data or []
 
     # -----------------------------------------------------
-    # CALCULATE PAYMENT TOTALS
+    # PAYMENT LOOKUP
     # -----------------------------------------------------
 
-    payment_totals = {}
+    payment_lookup = {}
 
     for payment in payments_data:
 
         student_id = payment["student_id"]
 
-        amount = payment["amount"] or 0
+        amount = payment.get("amount") or 0
 
-        payment_totals[student_id] = (
-            payment_totals.get(student_id, 0)
-            + amount
-        )
-
-
-    # -----------------------------------------------------
-    # CREATE STUDENT RECORDS
-    # -----------------------------------------------------
-
-    student_records = []
-
-    for student in students_data:
-
-        student_id = student["id"]
-
-        name = student["name"] or ""
-
-        subject = student["subject"] or ""
-
-        monthly_fee = (
-            student["monthly_fee"] or 0
-        )
-
-        amount_received = payment_totals.get(
-            student_id,
-            0
-        )
-
-        student_records.append([
-            student_id,
-            name,
-            subject,
-            monthly_fee,
-            amount_received
-        ])
-
+        payment_lookup[student_id] = {
+            "id": payment["id"],
+            "amount": amount
+        }
 
     # -----------------------------------------------------
     # CALCULATIONS
@@ -240,46 +200,27 @@ if page == "Dashboard":
 
     total_expected = 0
     total_received = 0
-    total_pending = 0
-
     paid_students = 0
-    partial_students = 0
     unpaid_students = 0
 
+    for student in students_data:
 
-    for record in student_records:
+        student_id = student["id"]
 
-        monthly_fee = record[3] or 0
-
-        amount_received = record[4] or 0
+        monthly_fee = student["monthly_fee"] or 0
 
         total_expected += monthly_fee
 
-        total_received += amount_received
+        payment = payment_lookup.get(student_id)
 
-        pending = max(
-            monthly_fee - amount_received,
-            0
-        )
+        if payment and payment["amount"] >= monthly_fee:
 
-        total_pending += pending
-
-
-        if (
-            monthly_fee > 0
-            and amount_received >= monthly_fee
-        ):
-
+            total_received += monthly_fee
             paid_students += 1
-
-        elif amount_received > 0:
-
-            partial_students += 1
 
         else:
 
             unpaid_students += 1
-
 
     # -----------------------------------------------------
     # DASHBOARD CARDS
@@ -298,22 +239,21 @@ if page == "Dashboard":
     )
 
     col3.metric(
-        "💵 Received",
+        "💵 Collected",
         f"Rs. {total_received:,.0f}"
     )
 
     col4.metric(
-        "⏳ Pending",
-        f"Rs. {total_pending:,.0f}"
-    )
-
-    col5.metric(
         "✅ Paid",
         paid_students
     )
 
-    st.divider()
+    col5.metric(
+        "❌ Unpaid",
+        unpaid_students
+    )
 
+    st.divider()
 
     # -----------------------------------------------------
     # SEARCH RESULT
@@ -322,12 +262,11 @@ if page == "Dashboard":
     if search_name.strip():
 
         search_results = [
-            record
-            for record in student_records
+            student
+            for student in students_data
             if search_name.strip().lower()
-            in record[1].lower()
+            in (student["name"] or "").lower()
         ]
-
 
         if not search_results:
 
@@ -343,50 +282,28 @@ if page == "Dashboard":
                 f"'{search_name.strip()}'"
             )
 
+            for student in search_results:
 
-            for record in search_results:
+                student_id = student["id"]
 
-                student_id = record[0]
+                student_name = student["name"] or ""
 
-                student_name = record[1]
+                subject = student["subject"] or "-"
 
-                subject = record[2] or "-"
+                monthly_fee = student["monthly_fee"] or 0
 
-                monthly_fee = record[3] or 0
+                payment = payment_lookup.get(student_id)
 
-                amount_received = record[4] or 0
-
-                pending = max(
-                    monthly_fee - amount_received,
-                    0
+                is_paid = (
+                    payment is not None
+                    and payment["amount"] >= monthly_fee
                 )
-
-
-                if (
-                    monthly_fee > 0
-                    and amount_received >= monthly_fee
-                ):
-
-                    status = "✅ Paid"
-
-                elif amount_received > 0:
-
-                    status = "🟡 Partial"
-
-                else:
-
-                    status = "❌ Unpaid"
-
 
                 st.markdown(
                     f"### 👨‍🎓 {student_name}"
                 )
 
-
-                info_col1, info_col2, info_col3 = (
-                    st.columns(3)
-                )
-
+                info_col1, info_col2, info_col3 = st.columns(3)
 
                 info_col1.write(
                     f"🆔 **Student ID:** {student_id}"
@@ -401,85 +318,91 @@ if page == "Dashboard":
                     f"Rs. {monthly_fee:,.0f}"
                 )
 
+                if is_paid:
 
-                info_col1, info_col2, info_col3 = (
-                    st.columns(3)
-                )
+                    st.success(
+                        f"✅ Fee Paid — Rs. {monthly_fee:,.0f}"
+                    )
 
+                else:
 
-                info_col1.write(
-                    f"💵 **Received:** "
-                    f"Rs. {amount_received:,.0f}"
-                )
-
-                info_col2.write(
-                    f"⏳ **Pending:** "
-                    f"Rs. {pending:,.0f}"
-                )
-
-                info_col3.write(
-                    f"📌 **Status:** {status}"
-                )
-
+                    st.error("❌ Fee Unpaid")
 
                 st.divider()
-
 
     # -----------------------------------------------------
     # FEE STATUS
     # -----------------------------------------------------
 
     st.subheader(
-        f"📋 {selected_month} "
-        f"{selected_year} Fee Status"
+        f"📋 {selected_month} {selected_year} Fee Status"
     )
 
+    # -----------------------------------------------------
+    # TOGGLE COLORS
+    # -----------------------------------------------------
 
-    header = st.columns(6)
+    st.markdown(
+    """
+    <style>
+
+    /* ON = GREEN */
+    div[data-testid="stToggle"] button[role="switch"][aria-checked="true"] {
+        background-color: #22c55e !important;
+        border-color: #22c55e !important;
+    }
+
+    /* OFF = RED */
+    div[data-testid="stToggle"] button[role="switch"][aria-checked="false"] {
+        background-color: #ef4444 !important;
+        border-color: #ef4444 !important;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+    # -----------------------------------------------------
+    # TABLE HEADER
+    # -----------------------------------------------------
+
+    header = st.columns([3, 2, 2, 1])
 
     header[0].write("**Student**")
     header[1].write("**Class / Subject**")
     header[2].write("**Monthly Fee**")
-    header[3].write("**Received**")
-    header[4].write("**Pending**")
-    header[5].write("**Status**")
+    header[3].write("**Paid**")
 
     st.divider()
 
+    # -----------------------------------------------------
+    # STUDENT TOGGLES
+    # -----------------------------------------------------
 
-    for record in student_records:
+    for student in students_data:
 
-        student_name = record[1]
+        student_id = student["id"]
 
-        subject = record[2] or "-"
+        student_name = student["name"] or ""
 
-        monthly_fee = record[3] or 0
+        subject = student["subject"] or "-"
 
-        amount_received = record[4] or 0
+        monthly_fee = student["monthly_fee"] or 0
 
-        pending = max(
-            monthly_fee - amount_received,
-            0
+        payment = payment_lookup.get(student_id)
+
+        is_paid = (
+            payment is not None
+            and payment["amount"] >= monthly_fee
         )
 
+        # Search filter
+        if search_name.strip():
 
-        if (
-            monthly_fee > 0
-            and amount_received >= monthly_fee
-        ):
+            if search_name.strip().lower() not in student_name.lower():
+                continue
 
-            status = "✅ Paid"
-
-        elif amount_received > 0:
-
-            status = "🟡 Partial"
-
-        else:
-
-            status = "❌ Unpaid"
-
-
-        row = st.columns(6)
+        row = st.columns([3, 2, 2, 1])
 
         row[0].write(student_name)
 
@@ -489,16 +412,90 @@ if page == "Dashboard":
             f"Rs. {monthly_fee:,.0f}"
         )
 
-        row[3].write(
-            f"Rs. {amount_received:,.0f}"
-        )
+        # -------------------------------------------------
+        # PAYMENT TOGGLE
+        # -------------------------------------------------
 
-        row[4].write(
-            f"Rs. {pending:,.0f}"
-        )
+        with row[3]:
 
-        row[5].write(status)
+            new_paid_status = st.toggle(
+                "",
+                value=is_paid,
+                key=(
+                    f"fee_toggle_"
+                    f"{student_id}_"
+                    f"{selected_month}_"
+                    f"{selected_year}"
+                ),
+                label_visibility="collapsed"
+            )
 
+        # -------------------------------------------------
+        # PAYMENT CHANGE
+        # -------------------------------------------------
+
+        if new_paid_status != is_paid:
+
+            # ---------------------------------------------
+            # TURN ON
+            # RECORD FULL MONTHLY FEE
+            # ---------------------------------------------
+
+            if new_paid_status:
+
+                if payment:
+
+                    # Convert an old/partial payment
+                    # into the full monthly fee.
+
+                    (
+                        supabase
+                        .table("payments")
+                        .update({
+                            "amount": monthly_fee,
+                            "status": "Paid",
+                            "payment_date": date.today().isoformat()
+                        })
+                        .eq("id", payment["id"])
+                        .execute()
+                    )
+
+                else:
+
+                    # Create new full payment.
+
+                    (
+                        supabase
+                        .table("payments")
+                        .insert({
+                            "student_id": student_id,
+                            "month": selected_month,
+                            "year": selected_year,
+                            "amount": monthly_fee,
+                            "status": "Paid",
+                            "payment_date": date.today().isoformat()
+                        })
+                        .execute()
+                    )
+
+            # ---------------------------------------------
+            # TURN OFF
+            # REMOVE MONTHLY PAYMENT
+            # ---------------------------------------------
+
+            else:
+
+                if payment:
+
+                    (
+                        supabase
+                        .table("payments")
+                        .delete()
+                        .eq("id", payment["id"])
+                        .execute()
+                    )
+
+            st.rerun()
 
 # =========================================================
 # MONTHLY REPORT
