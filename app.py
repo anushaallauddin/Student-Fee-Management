@@ -13,16 +13,22 @@ st.set_page_config(
     page_icon="📚",
     layout="wide"
 )
+
+
+# =========================================================
+# CUSTOM TOGGLE COLORS
+# =========================================================
+
 st.markdown(
     """
     <style>
-    
-    div[data-testid="stToggle"] [role="switch"] {
+
+    div[data-testid="stToggle"] button[role="switch"][aria-checked="false"] {
         background-color: #ef4444 !important;
         border-color: #ef4444 !important;
     }
 
-    div[data-testid="stToggle"] [role="switch"][aria-checked="true"] {
+    div[data-testid="stToggle"] button[role="switch"][aria-checked="true"] {
         background-color: #22c55e !important;
         border-color: #22c55e !important;
     }
@@ -31,6 +37,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 # =========================================================
 # DATABASE - SUPABASE
@@ -41,10 +48,7 @@ supabase = create_client(
     st.secrets["SUPABASE_KEY"]
 )
 
-key = st.secrets["SUPABASE_KEY"]
 
-st.write("KEY TYPE:", key[:20])
-st.write("KEY LENGTH:", len(key))
 # =========================================================
 # MONTHS / YEARS
 # =========================================================
@@ -87,9 +91,9 @@ page = st.sidebar.radio(
         "Monthly Report",
         "Add Student",
         "Edit Student",
-
+        "Record Fee",
         "Payment Records",
-       
+        "Edit/Delete Payment"
     ]
 )
 
@@ -153,29 +157,43 @@ if page == "Dashboard":
     students_response = (
         supabase
         .table("students")
-        .select("id, name, subject, monthly_fee")
+        .select(
+            "id, name, subject, monthly_fee"
+        )
         .order("name")
         .execute()
     )
 
-    students_data = students_response.data or []
+    students_data = (
+        students_response.data or []
+    )
 
     total_students = len(students_data)
 
     # -----------------------------------------------------
-    # GET PAYMENTS FOR SELECTED MONTH/YEAR
+    # GET PAYMENTS
     # -----------------------------------------------------
 
     payments_response = (
         supabase
         .table("payments")
-        .select("id, student_id, amount")
-        .eq("month", selected_month)
-        .eq("year", selected_year)
+        .select(
+            "id, student_id, amount"
+        )
+        .eq(
+            "month",
+            selected_month
+        )
+        .eq(
+            "year",
+            selected_year
+        )
         .execute()
     )
 
-    payments_data = payments_response.data or []
+    payments_data = (
+        payments_response.data or []
+    )
 
     # -----------------------------------------------------
     # PAYMENT LOOKUP
@@ -205,15 +223,21 @@ if page == "Dashboard":
 
     for student in students_data:
 
-        student_id = student["id"]
-
-        monthly_fee = student["monthly_fee"] or 0
+        monthly_fee = (
+            student["monthly_fee"] or 0
+        )
 
         total_expected += monthly_fee
 
-        payment = payment_lookup.get(student_id)
+        payment = payment_lookup.get(
+            student["id"]
+        )
 
-        if payment and payment["amount"] >= monthly_fee:
+        if (
+            payment
+            and monthly_fee > 0
+            and payment["amount"] >= monthly_fee
+        ):
 
             total_received += monthly_fee
             paid_students += 1
@@ -286,16 +310,25 @@ if page == "Dashboard":
 
                 student_id = student["id"]
 
-                student_name = student["name"] or ""
+                student_name = (
+                    student["name"] or ""
+                )
 
-                subject = student["subject"] or "-"
+                subject = (
+                    student["subject"] or "-"
+                )
 
-                monthly_fee = student["monthly_fee"] or 0
+                monthly_fee = (
+                    student["monthly_fee"] or 0
+                )
 
-                payment = payment_lookup.get(student_id)
+                payment = payment_lookup.get(
+                    student_id
+                )
 
                 is_paid = (
                     payment is not None
+                    and monthly_fee > 0
                     and payment["amount"] >= monthly_fee
                 )
 
@@ -303,7 +336,9 @@ if page == "Dashboard":
                     f"### 👨‍🎓 {student_name}"
                 )
 
-                info_col1, info_col2, info_col3 = st.columns(3)
+                info_col1, info_col2, info_col3 = (
+                    st.columns(3)
+                )
 
                 info_col1.write(
                     f"🆔 **Student ID:** {student_id}"
@@ -321,12 +356,15 @@ if page == "Dashboard":
                 if is_paid:
 
                     st.success(
-                        f"✅ Fee Paid — Rs. {monthly_fee:,.0f}"
+                        f"✅ Fee Paid — "
+                        f"Rs. {monthly_fee:,.0f}"
                     )
 
                 else:
 
-                    st.error("❌ Fee Unpaid")
+                    st.error(
+                        "❌ Fee Unpaid"
+                    )
 
                 st.divider()
 
@@ -335,38 +373,17 @@ if page == "Dashboard":
     # -----------------------------------------------------
 
     st.subheader(
-        f"📋 {selected_month} {selected_year} Fee Status"
+        f"📋 {selected_month} "
+        f"{selected_year} Fee Status"
     )
 
-    # -----------------------------------------------------
-    # TOGGLE COLORS
-    # -----------------------------------------------------
-
-    st.markdown(
-    """
-    <style>
-
-    /* ON = GREEN */
-    div[data-testid="stToggle"] button[role="switch"][aria-checked="true"] {
-        background-color: #22c55e !important;
-        border-color: #22c55e !important;
-    }
-
-    /* OFF = RED */
-    div[data-testid="stToggle"] button[role="switch"][aria-checked="false"] {
-        background-color: #ef4444 !important;
-        border-color: #ef4444 !important;
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True
-)
     # -----------------------------------------------------
     # TABLE HEADER
     # -----------------------------------------------------
 
-    header = st.columns([3, 2, 2, 1])
+    header = st.columns(
+        [3, 2, 2, 1]
+    )
 
     header[0].write("**Student**")
     header[1].write("**Class / Subject**")
@@ -375,127 +392,187 @@ if page == "Dashboard":
 
     st.divider()
 
-    # -----------------------------------------------------
-    # STUDENT TOGGLES
-    # -----------------------------------------------------
+    # =====================================================
+    # STUDENT LOOP
+    # =====================================================
 
     for student in students_data:
 
         student_id = student["id"]
 
-        student_name = student["name"] or ""
+        student_name = (
+            student["name"] or ""
+        )
 
-        subject = student["subject"] or "-"
+        subject = (
+            student["subject"] or "-"
+        )
 
-        monthly_fee = student["monthly_fee"] or 0
+        monthly_fee = (
+            student["monthly_fee"] or 0
+        )
 
-        payment = payment_lookup.get(student_id)
+        payment = payment_lookup.get(
+            student_id
+        )
 
         is_paid = (
             payment is not None
+            and monthly_fee > 0
             and payment["amount"] >= monthly_fee
         )
 
-        # Search filter
+        # -------------------------------------------------
+        # SEARCH FILTER
+        # -------------------------------------------------
+
         if search_name.strip():
 
-            if search_name.strip().lower() not in student_name.lower():
+            if (
+                search_name.strip().lower()
+                not in student_name.lower()
+            ):
+
                 continue
 
-        row = st.columns([3, 2, 2, 1])
+        # -------------------------------------------------
+        # ROW
+        # -------------------------------------------------
 
-        row[0].write(student_name)
+        row = st.columns(
+            [3, 2, 2, 1]
+        )
 
-        row[1].write(subject)
+        row[0].write(
+            student_name
+        )
+
+        row[1].write(
+            subject
+        )
 
         row[2].write(
             f"Rs. {monthly_fee:,.0f}"
         )
 
         # -------------------------------------------------
-        # PAYMENT TOGGLE
+        # TOGGLE
         # -------------------------------------------------
+
+        toggle_key = (
+            f"fee_toggle_"
+            f"{student_id}_"
+            f"{selected_month}_"
+            f"{selected_year}"
+        )
 
         with row[3]:
 
             new_paid_status = st.toggle(
                 "",
                 value=is_paid,
-                key=(
-                    f"fee_toggle_"
-                    f"{student_id}_"
-                    f"{selected_month}_"
-                    f"{selected_year}"
-                ),
+                key=toggle_key,
                 label_visibility="collapsed"
             )
 
-        # -------------------------------------------------
+        # =================================================
         # PAYMENT CHANGE
-        # -------------------------------------------------
+        # =================================================
 
         if new_paid_status != is_paid:
 
-            # ---------------------------------------------
-            # TURN ON
-            # RECORD FULL MONTHLY FEE
-            # ---------------------------------------------
+            # =============================================
+            # TOGGLE ON = MARK AS PAID
+            # =============================================
 
             if new_paid_status:
 
-                if payment:
+                try:
 
-                    # Convert an old/partial payment
-                    # into the full monthly fee.
+                    if payment:
 
-                    (
-                        supabase
-                        .table("payments")
-                        .update({
-                            "amount": monthly_fee,
-                            "status": "Paid",
-                            "payment_date": date.today().isoformat()
-                        })
-                        .eq("id", payment["id"])
-                        .execute()
+                        (
+                            supabase
+                            .table("payments")
+                            .update({
+                                "amount": monthly_fee,
+                                "status": "Paid",
+                                "payment_date": (
+                                    date.today().isoformat()
+                                )
+                            })
+                            .eq(
+                                "id",
+                                payment["id"]
+                            )
+                            .execute()
+                        )
+
+                    else:
+
+                        (
+                            supabase
+                            .table("payments")
+                            .insert({
+                                "student_id": student_id,
+                                "month": selected_month,
+                                "year": selected_year,
+                                "amount": monthly_fee,
+                                "status": "Paid",
+                                "payment_date": (
+                                    date.today().isoformat()
+                                )
+                            })
+                            .execute()
+                        )
+
+                except Exception as e:
+
+                    st.error(
+                        f"❌ Payment could not be saved: {e}"
                     )
 
-                else:
+                    st.stop()
 
-                    # Create new full payment.
-
-                    (
-                        supabase
-                        .table("payments")
-                        .insert({
-                            "student_id": student_id,
-                            "month": selected_month,
-                            "year": selected_year,
-                            "amount": monthly_fee,
-                            "status": "Paid",
-                            "payment_date": date.today().isoformat()
-                        })
-                        .execute()
-                    )
-
-            # ---------------------------------------------
-            # TURN OFF
-            # REMOVE MONTHLY PAYMENT
-            # ---------------------------------------------
+            # =============================================
+            # TOGGLE OFF = DELETE PAYMENT
+            # =============================================
 
             else:
 
                 if payment:
 
-                    (
-                        supabase
-                        .table("payments")
-                        .delete()
-                        .eq("id", payment["id"])
-                        .execute()
-                    )
+                    try:
+
+                        (
+                            supabase
+                            .table("payments")
+                            .delete()
+                            .eq(
+                                "id",
+                                payment["id"]
+                            )
+                            .execute()
+                        )
+
+                    except Exception as e:
+
+                        st.error(
+                            f"❌ Payment could not be deleted: {e}"
+                        )
+
+                        st.stop()
+
+            # =============================================
+            # RESET TOGGLE
+            # =============================================
+
+            if toggle_key in st.session_state:
+
+                del st.session_state[toggle_key]
 
             st.rerun()
+
 
 # =========================================================
 # MONTHLY REPORT
@@ -512,9 +589,11 @@ elif page == "Monthly Report":
 
     st.divider()
 
+    # -----------------------------------------------------
+    # MONTH / YEAR
+    # -----------------------------------------------------
 
     col1, col2 = st.columns(2)
-
 
     with col1:
 
@@ -525,7 +604,6 @@ elif page == "Monthly Report":
             key="report_month"
         )
 
-
     with col2:
 
         report_year = st.selectbox(
@@ -535,9 +613,7 @@ elif page == "Monthly Report":
             key="report_year"
         )
 
-
     st.divider()
-
 
     # -----------------------------------------------------
     # GET STUDENTS
@@ -557,7 +633,6 @@ elif page == "Monthly Report":
         students_response.data or []
     )
 
-
     # -----------------------------------------------------
     # GET PAYMENTS
     # -----------------------------------------------------
@@ -568,8 +643,14 @@ elif page == "Monthly Report":
         .select(
             "student_id, amount, payment_date"
         )
-        .eq("month", report_month)
-        .eq("year", report_year)
+        .eq(
+            "month",
+            report_month
+        )
+        .eq(
+            "year",
+            report_year
+        )
         .execute()
     )
 
@@ -577,118 +658,75 @@ elif page == "Monthly Report":
         payments_response.data or []
     )
 
-
     # -----------------------------------------------------
-    # PAYMENT TOTALS
+    # PAYMENT LOOKUP
     # -----------------------------------------------------
 
-    payment_totals = {}
-
-    payment_dates = {}
-
+    payment_lookup = {}
 
     for payment in payments_data:
 
         student_id = payment["student_id"]
 
-        amount = payment["amount"] or 0
-
-
-        payment_totals[student_id] = (
-            payment_totals.get(student_id, 0)
-            + amount
-        )
-
-
-        payment_dates[student_id] = (
-            payment.get("payment_date")
-        )
-
-
-    # -----------------------------------------------------
-    # CREATE REPORT RECORDS
-    # -----------------------------------------------------
-
-    report_records = []
-
-
-    for student in students_data:
-
-        student_id = student["id"]
-
-        student_name = student["name"] or ""
-
-        subject = student["subject"] or ""
-
-        monthly_fee = (
-            student["monthly_fee"] or 0
-        )
-
-        amount_received = payment_totals.get(
-            student_id,
-            0
-        )
-
-        payment_date = payment_dates.get(
-            student_id,
-            None
-        )
-
-
-        report_records.append([
-            student_id,
-            student_name,
-            subject,
-            monthly_fee,
-            amount_received,
-            payment_date
-        ])
-
+        payment_lookup[student_id] = {
+            "amount": payment.get("amount") or 0,
+            "payment_date": (
+                payment.get("payment_date")
+                or "-"
+            )
+        }
 
     # -----------------------------------------------------
     # CALCULATIONS
     # -----------------------------------------------------
 
     total_expected = 0
-
     total_received = 0
-
     total_pending = 0
 
     paid_count = 0
-
-    partial_count = 0
-
     unpaid_count = 0
 
     report_data = []
 
+    for student in students_data:
 
-    for record in report_records:
+        student_id = student["id"]
 
-        student_name = record[1]
-
-        subject = record[2] or "-"
-
-        monthly_fee = record[3] or 0
-
-        amount_received = record[4] or 0
-
-        payment_date = record[5] or "-"
-
-
-        pending = max(
-            monthly_fee - amount_received,
-            0
+        student_name = (
+            student["name"] or ""
         )
 
+        subject = (
+            student["subject"] or "-"
+        )
 
-        total_expected += monthly_fee
+        monthly_fee = (
+            student["monthly_fee"] or 0
+        )
 
-        total_received += amount_received
+        payment = payment_lookup.get(
+            student_id
+        )
 
-        total_pending += pending
+        if payment:
 
+            amount_received = (
+                payment["amount"]
+            )
+
+            payment_date = (
+                payment["payment_date"]
+            )
+
+        else:
+
+            amount_received = 0
+            payment_date = "-"
+
+        # -------------------------------------------------
+        # FULL PAYMENT SYSTEM
+        # -------------------------------------------------
 
         if (
             monthly_fee > 0
@@ -697,88 +735,79 @@ elif page == "Monthly Report":
 
             status = "Paid"
 
+            received_for_student = monthly_fee
+
+            pending = 0
+
             paid_count += 1
-
-        elif amount_received > 0:
-
-            status = "Partial"
-
-            partial_count += 1
 
         else:
 
             status = "Unpaid"
 
+            received_for_student = 0
+
+            pending = monthly_fee
+
             unpaid_count += 1
 
+        total_expected += monthly_fee
+
+        total_received += received_for_student
+
+        total_pending += pending
 
         report_data.append([
             student_name,
             subject,
             monthly_fee,
-            amount_received,
+            received_for_student,
             pending,
             status,
             payment_date
         ])
-
 
     # -----------------------------------------------------
     # SUMMARY
     # -----------------------------------------------------
 
     st.subheader(
-        f"📌 {report_month} {report_year} Summary"
+        f"📌 {report_month} "
+        f"{report_year} Summary"
     )
 
-
     col1, col2, col3 = st.columns(3)
-
 
     col1.metric(
         "💰 Total Expected",
         f"Rs. {total_expected:,.0f}"
     )
 
-
     col2.metric(
         "💵 Total Received",
         f"Rs. {total_received:,.0f}"
     )
-
 
     col3.metric(
         "⏳ Total Pending",
         f"Rs. {total_pending:,.0f}"
     )
 
-
     st.divider()
 
-
-    col1, col2, col3 = st.columns(3)
-
+    col1, col2 = st.columns(2)
 
     col1.metric(
         "✅ Paid Students",
         paid_count
     )
 
-
     col2.metric(
-        "🟡 Partial Payments",
-        partial_count
-    )
-
-
-    col3.metric(
         "❌ Unpaid Students",
         unpaid_count
     )
 
-
     st.divider()
-
 
     # -----------------------------------------------------
     # STUDENT FEE DETAILS
@@ -787,7 +816,6 @@ elif page == "Monthly Report":
     st.subheader(
         "📋 Student Fee Details"
     )
-
 
     report_df = pd.DataFrame(
         report_data,
@@ -802,7 +830,6 @@ elif page == "Monthly Report":
         ]
     )
 
-
     if report_df.empty:
 
         st.info(
@@ -813,7 +840,6 @@ elif page == "Monthly Report":
     else:
 
         display_report = report_df.copy()
-
 
         for column in [
             "Monthly Fee",
@@ -829,32 +855,27 @@ elif page == "Monthly Report":
                 )
             )
 
-
         st.dataframe(
             display_report,
             use_container_width=True,
             hide_index=True
         )
 
-
     st.divider()
 
-
     # -----------------------------------------------------
-    # PENDING STUDENTS
+    # UNPAID STUDENTS
     # -----------------------------------------------------
 
     st.subheader(
-        "⏳ Pending Fee Students"
+        "⏳ Unpaid Students"
     )
-
 
     pending_data = [
         row
         for row in report_data
         if row[4] > 0
     ]
-
 
     if pending_data:
 
@@ -871,9 +892,7 @@ elif page == "Monthly Report":
             ]
         )
 
-
         display_pending = pending_df.copy()
-
 
         for column in [
             "Monthly Fee",
@@ -889,13 +908,11 @@ elif page == "Monthly Report":
                 )
             )
 
-
         st.dataframe(
             display_pending,
             use_container_width=True,
             hide_index=True
         )
-
 
     else:
 
@@ -903,9 +920,7 @@ elif page == "Monthly Report":
             "🎉 No pending fees for this month!"
         )
 
-
     st.divider()
-
 
     # -----------------------------------------------------
     # DOWNLOAD REPORT
@@ -916,7 +931,6 @@ elif page == "Monthly Report":
         .to_csv(index=False)
         .encode("utf-8")
     )
-
 
     st.download_button(
         label="📥 Download Monthly Report",
@@ -938,23 +952,19 @@ elif page == "Add Student":
 
     st.title("👨‍🎓 Add New Student")
 
-
     name = st.text_input(
         "Student Name"
     )
 
-
     subject = st.text_input(
         "Subject / Class"
     )
-
 
     monthly_fee = st.number_input(
         "Monthly Fee",
         min_value=0.0,
         step=500.0
     )
-
 
     if st.button(
         "➕ Add Student",
@@ -969,10 +979,6 @@ elif page == "Add Student":
 
         else:
 
-            # -------------------------------------------------
-            # CHECK DUPLICATE STUDENT
-            # -------------------------------------------------
-
             students_response = (
                 supabase
                 .table("students")
@@ -982,14 +988,11 @@ elif page == "Add Student":
                 .execute()
             )
 
-
             students_data = (
                 students_response.data or []
             )
 
-
             duplicate_student = None
-
 
             for student in students_data:
 
@@ -997,11 +1000,9 @@ elif page == "Add Student":
                     student["name"] or ""
                 ).strip().lower()
 
-
                 existing_subject = (
                     student["subject"] or ""
                 ).strip().lower()
-
 
                 if (
                     existing_name
@@ -1012,9 +1013,7 @@ elif page == "Add Student":
                 ):
 
                     duplicate_student = student
-
                     break
-
 
             if duplicate_student:
 
@@ -1024,26 +1023,22 @@ elif page == "Add Student":
                     f"{duplicate_student['id']}."
                 )
 
-
             else:
 
-                # ---------------------------------------------
-                # INSERT STUDENT
-                # ---------------------------------------------
-
-                supabase.table(
-                    "students"
-                ).insert({
-                    "name": name.strip(),
-                    "subject": subject.strip(),
-                    "monthly_fee": monthly_fee
-                }).execute()
-
+                (
+                    supabase
+                    .table("students")
+                    .insert({
+                        "name": name.strip(),
+                        "subject": subject.strip(),
+                        "monthly_fee": monthly_fee
+                    })
+                    .execute()
+                )
 
                 st.success(
                     f"✅ {name} added successfully!"
                 )
-
 
                 st.rerun()
 
@@ -1059,16 +1054,22 @@ elif page == "Edit Student":
     students_response = (
         supabase
         .table("students")
-        .select("id, name, subject, monthly_fee")
+        .select(
+            "id, name, subject, monthly_fee"
+        )
         .order("name")
         .execute()
     )
 
-    students = students_response.data or []
+    students = (
+        students_response.data or []
+    )
 
     if not students:
 
-        st.warning("No students found.")
+        st.warning(
+            "No students found."
+        )
 
     else:
 
@@ -1088,9 +1089,10 @@ elif page == "Edit Student":
             key="edit_student_select"
         )
 
-        student_id = student_options[selected_label]
+        student_id = (
+            student_options[selected_label]
+        )
 
-        # Get selected student's current data
         selected_student = next(
             (
                 student
@@ -1102,69 +1104,100 @@ elif page == "Edit Student":
 
         if selected_student:
 
-            st.subheader("Edit Student Information")
+            st.subheader(
+                "Edit Student Information"
+            )
 
             new_name = st.text_input(
                 "Student Name",
-                value=selected_student["name"],
+                value=(
+                    selected_student["name"]
+                    or ""
+                ),
                 key="edit_name"
             )
 
             new_subject = st.text_input(
-                "Subject",
-                value=selected_student["subject"] or "",
+                "Subject / Class",
+                value=(
+                    selected_student["subject"]
+                    or ""
+                ),
                 key="edit_subject"
             )
 
             new_monthly_fee = st.number_input(
                 "Monthly Fee",
                 min_value=0.0,
-                value=float(selected_student["monthly_fee"]),
+                value=float(
+                    selected_student["monthly_fee"]
+                    or 0
+                ),
                 step=500.0,
                 key="edit_fee"
             )
 
-            # UPDATE STUDENT
+            st.info(
+                "Changing the fee updates the "
+                "student's current monthly fee."
+            )
+
             if st.button(
                 "💾 Update Student",
+                use_container_width=True,
                 key="update_student_button"
             ):
 
                 if not new_name.strip():
-                    st.error("Student name cannot be empty.")
+
+                    st.error(
+                        "Student name cannot be empty."
+                    )
 
                 else:
 
-                    supabase.table("students").update({
-                        "name": new_name.strip(),
-                        "subject": new_subject.strip(),
-                        "monthly_fee": new_monthly_fee
-                    }).eq(
-                        "id",
-                        student_id
-                    ).execute()
+                    (
+                        supabase
+                        .table("students")
+                        .update({
+                            "name": new_name.strip(),
+                            "subject": new_subject.strip(),
+                            "monthly_fee": new_monthly_fee
+                        })
+                        .eq(
+                            "id",
+                            student_id
+                        )
+                        .execute()
+                    )
 
-                    st.success("Student updated successfully! ✅")
+                    st.success(
+                        "Student updated successfully! ✅"
+                    )
 
                     st.rerun()
 
             st.divider()
 
-            # DELETE STUDENT
-            st.subheader("🗑️ Delete Student")
+            st.subheader(
+                "🗑️ Delete Student"
+            )
 
             st.warning(
-                "Deleting a student will also delete all payment "
-                "records associated with this student."
+                "Deleting a student will also delete "
+                "all payment records associated "
+                "with this student."
             )
 
             confirm_delete = st.checkbox(
-                "I understand that this action cannot be undone.",
+                "I understand that this action "
+                "cannot be undone.",
                 key="confirm_delete_student"
             )
 
             if st.button(
                 "🗑️ Delete Student",
+                use_container_width=True,
                 key="delete_student_button"
             ):
 
@@ -1176,119 +1209,32 @@ elif page == "Edit Student":
 
                 else:
 
-                    # Delete payment records first
-                    supabase.table("payments").delete().eq(
-                        "student_id",
-                        student_id
-                    ).execute()
+                    (
+                        supabase
+                        .table("payments")
+                        .delete()
+                        .eq(
+                            "student_id",
+                            student_id
+                        )
+                        .execute()
+                    )
 
-                    # Then delete the student
-                    supabase.table("students").delete().eq(
-                        "id",
-                        student_id
-                    ).execute()
+                    (
+                        supabase
+                        .table("students")
+                        .delete()
+                        .eq(
+                            "id",
+                            student_id
+                        )
+                        .execute()
+                    )
 
                     st.success(
-                        "Student and associated payment records "
-                        "deleted successfully! ✅"
+                        "Student and associated payment "
+                        "records deleted successfully! ✅"
                     )
-
-                    st.rerun()
-        # -----------------------------------------------------
-        # GET SELECTED STUDENT
-        # -----------------------------------------------------
-
-        selected_student_response = (
-            supabase
-            .table("students")
-            .select(
-                "id, name, subject, monthly_fee"
-            )
-            .eq("id", student_id)
-            .limit(1)
-            .execute()
-        )
-
-
-        selected_student_data = (
-            selected_student_response.data or []
-        )
-
-
-        if not selected_student_data:
-
-            st.error(
-                "Student record could not be found."
-            )
-
-        else:
-
-            selected_student = (
-                selected_student_data[0]
-            )
-
-
-            new_name = st.text_input(
-                "Student Name",
-                value=selected_student["name"] or "",
-                key="edit_student_name"
-            )
-
-
-            new_subject = st.text_input(
-                "Subject / Class",
-                value=selected_student["subject"] or "",
-                key="edit_student_subject"
-            )
-
-
-            new_fee = st.number_input(
-                "Monthly Fee",
-                min_value=0.0,
-                value=float(
-                    selected_student["monthly_fee"] or 0
-                ),
-                step=500.0,
-                key="edit_student_fee"
-            )
-
-
-            st.info(
-                "Changing the fee updates the "
-                "student's current monthly fee."
-            )
-
-
-            if st.button(
-                "💾 Update Student",
-                use_container_width=True
-            ):
-
-                if not new_name.strip():
-
-                    st.error(
-                        "Student name cannot be empty."
-                    )
-
-                else:
-
-                    supabase.table(
-                        "students"
-                    ).update({
-                        "name": new_name.strip(),
-                        "subject": new_subject.strip(),
-                        "monthly_fee": new_fee
-                    }).eq(
-                        "id",
-                        student_id
-                    ).execute()
-
-
-                    st.success(
-                        f"✅ {new_name} "
-                        "updated successfully!"
-                    )
-
 
                     st.rerun()
 
@@ -1301,18 +1247,12 @@ elif page == "Record Fee":
 
     st.title("💰 Record Fee Payment")
 
-
     st.write(
-        "Record one payment per student for each month."
+        "Record the complete monthly fee "
+        "for a student."
     )
 
-
     st.divider()
-
-
-    # -----------------------------------------------------
-    # GET STUDENTS
-    # -----------------------------------------------------
 
     students_response = (
         supabase
@@ -1324,11 +1264,9 @@ elif page == "Record Fee":
         .execute()
     )
 
-
     students = (
         students_response.data or []
     )
-
 
     if not students:
 
@@ -1349,75 +1287,43 @@ elif page == "Record Fee":
             for student in students
         }
 
-
         selected_label = st.selectbox(
             "👨‍🎓 Select Student",
             list(student_options.keys()),
             key="record_student"
         )
 
-
-        student_id = student_options[
-            selected_label
-        ]
-
-
-        # -----------------------------------------------------
-        # GET SELECTED STUDENT
-        # -----------------------------------------------------
-
-        selected_student_response = (
-            supabase
-            .table("students")
-            .select(
-                "id, name, subject, monthly_fee"
-            )
-            .eq("id", student_id)
-            .limit(1)
-            .execute()
+        student_id = (
+            student_options[selected_label]
         )
 
-
-        selected_student_data = (
-            selected_student_response.data or []
+        selected_student = next(
+            (
+                student
+                for student in students
+                if student["id"] == student_id
+            ),
+            None
         )
 
-
-        if not selected_student_data:
-
-            st.error(
-                "Student record could not be found."
-            )
-
-        else:
-
-            selected_student = (
-                selected_student_data[0]
-            )
-
+        if selected_student:
 
             student_name = (
-                selected_student["name"] or ""
+                selected_student["name"]
+                or ""
             )
-
 
             monthly_fee = (
-                selected_student["monthly_fee"] or 0
+                selected_student["monthly_fee"]
+                or 0
             )
-
 
             st.info(
                 f"💵 Monthly Fee: "
                 f"**Rs. {monthly_fee:,.0f}**"
             )
 
-
-            # -------------------------------------------------
-            # MONTH / YEAR
-            # -------------------------------------------------
-
             col1, col2 = st.columns(2)
-
 
             with col1:
 
@@ -1428,7 +1334,6 @@ elif page == "Record Fee":
                     key="record_month"
                 )
 
-
             with col2:
 
                 year = st.selectbox(
@@ -1438,29 +1343,11 @@ elif page == "Record Fee":
                     key="record_year"
                 )
 
-
-            # -------------------------------------------------
-            # PAYMENT AMOUNT
-            # -------------------------------------------------
-
-            amount = st.number_input(
-                "💵 Payment Amount",
-                min_value=0.0,
-                step=500.0,
-                key="record_amount"
-            )
-
-
             payment_date = st.date_input(
                 "📅 Payment Date",
                 value=date.today(),
                 key="record_payment_date"
             )
-
-
-            # -------------------------------------------------
-            # CHECK EXISTING PAYMENT
-            # -------------------------------------------------
 
             existing_payment_response = (
                 supabase
@@ -1480,19 +1367,14 @@ elif page == "Record Fee":
                     "year",
                     year
                 )
-                .order(
-                    "id",
-                    desc=True
-                )
                 .limit(1)
                 .execute()
             )
 
-
             existing_payment_data = (
-                existing_payment_response.data or []
+                existing_payment_response.data
+                or []
             )
-
 
             existing_payment = (
                 existing_payment_data[0]
@@ -1500,62 +1382,27 @@ elif page == "Record Fee":
                 else None
             )
 
-
             payment_exists = (
                 existing_payment is not None
             )
 
-
             if payment_exists:
 
                 existing_amount = (
-                    existing_payment["amount"] or 0
+                    existing_payment["amount"]
+                    or 0
                 )
 
-
-                st.error(
-                    f"⚠️ Payment already exists for "
-                    f"**{student_name}** in "
-                    f"**{month} {year}**.\n\n"
+                st.warning(
+                    f"⚠️ Payment already exists "
+                    f"for **{student_name}** "
+                    f"in **{month} {year}**.\n\n"
                     f"Existing payment: "
-                    f"**Rs. {existing_amount:,.0f}**\n\n"
-                    f"Please use **Edit/Delete Payment** "
-                    f"to update this payment."
+                    f"**Rs. {existing_amount:,.0f}**"
                 )
-
-
-            # -------------------------------------------------
-            # PAYMENT STATUS
-            # -------------------------------------------------
-
-            if (
-                amount >= monthly_fee
-                and monthly_fee > 0
-            ):
-
-                payment_status = "Paid"
-
-            elif amount > 0:
-
-                payment_status = "Partial"
-
-            else:
-
-                payment_status = "Unpaid"
-
-
-            st.info(
-                f"Payment Status: "
-                f"**{payment_status}**"
-            )
-
-
-            # -------------------------------------------------
-            # RECORD PAYMENT
-            # -------------------------------------------------
 
             if st.button(
-                "💾 Record Payment",
+                "💾 Record Full Payment",
                 use_container_width=True,
                 key="record_payment_button"
             ):
@@ -1563,42 +1410,40 @@ elif page == "Record Fee":
                 if payment_exists:
 
                     st.error(
-                        "❌ Payment was NOT recorded "
-                        "because a payment already "
-                        "exists for this student, "
-                        "month and year."
+                        "❌ Payment already exists."
                     )
 
-
-                elif amount <= 0:
+                elif monthly_fee <= 0:
 
                     st.error(
-                        "Please enter a payment amount "
+                        "Student monthly fee must be "
                         "greater than 0."
                     )
 
-
                 else:
 
-                    supabase.table(
-                        "payments"
-                    ).insert({
-                        "student_id": student_id,
-                        "month": month,
-                        "year": year,
-                        "amount": amount,
-                        "status": payment_status,
-                        "payment_date": (
-                            payment_date.isoformat()
-                        )
-                    }).execute()
-
-
-                    st.success(
-                        f"✅ Rs. {amount:,.0f} payment "
-                        f"recorded for {student_name}."
+                    (
+                        supabase
+                        .table("payments")
+                        .insert({
+                            "student_id": student_id,
+                            "month": month,
+                            "year": year,
+                            "amount": monthly_fee,
+                            "status": "Paid",
+                            "payment_date": (
+                                payment_date.isoformat()
+                            )
+                        })
+                        .execute()
                     )
 
+                    st.success(
+                        f"✅ Full payment of "
+                        f"Rs. {monthly_fee:,.0f} "
+                        f"recorded for "
+                        f"{student_name}."
+                    )
 
                     st.rerun()
 
@@ -1611,18 +1456,11 @@ elif page == "Payment Records":
 
     st.title("💳 Payment Records")
 
-
     st.write(
         "View all recorded student fee payments."
     )
 
-
     st.divider()
-
-
-    # -----------------------------------------------------
-    # GET PAYMENTS
-    # -----------------------------------------------------
 
     payments_response = (
         supabase
@@ -1645,15 +1483,9 @@ elif page == "Payment Records":
         .execute()
     )
 
-
     payments_data = (
         payments_response.data or []
     )
-
-
-    # -----------------------------------------------------
-    # GET STUDENTS
-    # -----------------------------------------------------
 
     students_response = (
         supabase
@@ -1664,28 +1496,16 @@ elif page == "Payment Records":
         .execute()
     )
 
-
     students_data = (
         students_response.data or []
     )
-
-
-    # -----------------------------------------------------
-    # CREATE STUDENT LOOKUP
-    # -----------------------------------------------------
 
     student_lookup = {
         student["id"]: student
         for student in students_data
     }
 
-
-    # -----------------------------------------------------
-    # CREATE PAYMENT LIST
-    # -----------------------------------------------------
-
     payments = []
-
 
     for payment in payments_data:
 
@@ -1693,7 +1513,6 @@ elif page == "Payment Records":
             payment["student_id"],
             {}
         )
-
 
         payments.append([
             payment["id"],
@@ -1706,39 +1525,16 @@ elif page == "Payment Records":
             payment["payment_date"]
         ])
 
-
-    # -----------------------------------------------------
-    # DISPLAY PAYMENTS
-    # -----------------------------------------------------
-
     if not payments:
 
         st.info(
             "No payment records found."
         )
 
-
     else:
 
-        payment_data = []
-
-
-        for record in payments:
-
-            payment_data.append([
-                record[0],
-                record[1] or "Deleted Student",
-                record[2] or "-",
-                record[3],
-                record[4],
-                record[5] or 0,
-                record[6] or "-",
-                record[7] or "-"
-            ])
-
-
         payment_df = pd.DataFrame(
-            payment_data,
+            payments,
             columns=[
                 "Payment ID",
                 "Student Name",
@@ -1751,20 +1547,36 @@ elif page == "Payment Records":
             ]
         )
 
+        display_payment = payment_df.copy()
 
-        display_payment = (
-            payment_df.copy()
+        display_payment["Student Name"] = (
+            display_payment["Student Name"]
+            .fillna("Deleted Student")
         )
 
+        display_payment["Subject / Class"] = (
+            display_payment["Subject / Class"]
+            .fillna("-")
+        )
+
+        display_payment["Status"] = (
+            display_payment["Status"]
+            .fillna("Paid")
+        )
 
         display_payment["Amount"] = (
             display_payment["Amount"]
+            .fillna(0)
             .apply(
                 lambda x:
                 f"Rs. {x:,.0f}"
             )
         )
 
+        display_payment["Payment Date"] = (
+            display_payment["Payment Date"]
+            .fillna("-")
+        )
 
         st.dataframe(
             display_payment,
@@ -1772,14 +1584,13 @@ elif page == "Payment Records":
             hide_index=True
         )
 
-
         st.divider()
 
-
         total_payment_amount = (
-            payment_df["Amount"].sum()
+            payment_df["Amount"]
+            .fillna(0)
+            .sum()
         )
-
 
         st.metric(
             "💵 Total Payments",
@@ -1795,19 +1606,12 @@ elif page == "Edit/Delete Payment":
 
     st.title("✏️ Edit / Delete Payment")
 
-
     st.write(
         "Select an existing payment to edit "
         "or delete it."
     )
 
-
     st.divider()
-
-
-    # -----------------------------------------------------
-    # GET ALL PAYMENTS
-    # -----------------------------------------------------
 
     payments_response = (
         supabase
@@ -1830,111 +1634,72 @@ elif page == "Edit/Delete Payment":
         .execute()
     )
 
-
     payments_data = (
         payments_response.data or []
     )
-
-
-    # -----------------------------------------------------
-    # GET STUDENTS
-    # -----------------------------------------------------
 
     students_response = (
         supabase
         .table("students")
         .select(
-            "id, name, subject"
+            "id, name, subject, monthly_fee"
         )
         .execute()
     )
 
-
     students_data = (
         students_response.data or []
     )
-
 
     student_lookup = {
         student["id"]: student
         for student in students_data
     }
 
-
-    # -----------------------------------------------------
-    # CREATE PAYMENT LIST
-    # -----------------------------------------------------
-
-    payments = []
-
-
-    for payment in payments_data:
-
-        student = student_lookup.get(
-            payment["student_id"],
-            {}
-        )
-
-
-        payments.append([
-            payment["id"],
-            payment["student_id"],
-            student.get("name"),
-            student.get("subject"),
-            payment["month"],
-            payment["year"],
-            payment["amount"],
-            payment["status"],
-            payment["payment_date"]
-        ])
-
-
-    # -----------------------------------------------------
-    # CHECK PAYMENTS
-    # -----------------------------------------------------
-
-    if not payments:
+    if not payments_data:
 
         st.info(
             "No payment records available "
             "to edit or delete."
         )
 
-
     else:
 
         payment_options = {}
 
+        for payment in payments_data:
 
-        for payment in payments:
+            payment_id = payment["id"]
 
-            payment_id = payment[0]
+            student = student_lookup.get(
+                payment["student_id"],
+                {}
+            )
 
             student_name = (
-                payment[2]
+                student.get("name")
                 or "Deleted Student"
             )
 
             subject = (
-                payment[3]
+                student.get("subject")
                 or "-"
             )
 
             month = (
-                payment[4]
+                payment["month"]
                 or "-"
             )
 
             year = (
-                payment[5]
+                payment["year"]
                 or "-"
             )
 
             amount = (
-                payment[6]
+                payment["amount"]
                 or 0
             )
-
 
             label = (
                 f"Payment ID {payment_id} | "
@@ -1944,37 +1709,21 @@ elif page == "Edit/Delete Payment":
                 f"Rs. {amount:,.0f}"
             )
 
-
             payment_options[label] = (
                 payment_id
             )
 
-
-        # -------------------------------------------------
-        # SELECT PAYMENT
-        # -------------------------------------------------
-
-        selected_payment_label = (
-            st.selectbox(
-                "💳 Select Payment",
-                list(
-                    payment_options.keys()
-                ),
-                key="edit_payment_select"
-            )
+        selected_payment_label = st.selectbox(
+            "💳 Select Payment",
+            list(payment_options.keys()),
+            key="edit_payment_select"
         )
-
 
         selected_payment_id = (
             payment_options[
                 selected_payment_label
             ]
         )
-
-
-        # -------------------------------------------------
-        # GET SELECTED PAYMENT
-        # -------------------------------------------------
 
         selected_payment_response = (
             supabase
@@ -1998,12 +1747,10 @@ elif page == "Edit/Delete Payment":
             .execute()
         )
 
-
         selected_payment_data = (
             selected_payment_response.data
             or []
         )
-
 
         if not selected_payment_data:
 
@@ -2011,13 +1758,11 @@ elif page == "Edit/Delete Payment":
                 "Payment record could not be found."
             )
 
-
         else:
 
             payment = (
                 selected_payment_data[0]
             )
-
 
             payment_id = payment["id"]
 
@@ -2033,26 +1778,10 @@ elif page == "Edit/Delete Payment":
                 or current_year
             )
 
-            old_amount = (
-                payment["amount"]
-                or 0
-            )
-
-            old_status = (
-                payment["status"]
-                or "Unpaid"
-            )
-
-            old_payment_date = (
-                payment["payment_date"]
-            )
-
-
             student = student_lookup.get(
                 student_id,
                 {}
             )
-
 
             student_name = (
                 student.get("name")
@@ -2064,27 +1793,24 @@ elif page == "Edit/Delete Payment":
                 or "-"
             )
 
-
-            # -------------------------------------------------
-            # STUDENT INFO
-            # -------------------------------------------------
-
-            st.info(
-                f"👨‍🎓 Student: "
-                f"**{student_name}**  \n"
-                f"📚 Subject: "
-                f"**{subject}**  \n"
-                f"🆔 Payment ID: "
-                f"**{payment_id}**"
+            student_fee = (
+                student.get("monthly_fee")
+                or 0
             )
 
+            old_payment_date = (
+                payment["payment_date"]
+            )
+
+            st.info(
+                f"👨‍🎓 Student: **{student_name}**  \n"
+                f"📚 Subject: **{subject}**  \n"
+                f"🆔 Payment ID: **{payment_id}**  \n"
+                f"💰 Monthly Fee: "
+                f"**Rs. {student_fee:,.0f}**"
+            )
 
             st.divider()
-
-
-            # -------------------------------------------------
-            # MONTH
-            # -------------------------------------------------
 
             if old_month in months:
 
@@ -2096,7 +1822,6 @@ elif page == "Edit/Delete Payment":
 
                 old_month_index = 0
 
-
             edit_month = st.selectbox(
                 "📅 Month",
                 months,
@@ -2104,13 +1829,7 @@ elif page == "Edit/Delete Payment":
                 key=f"edit_month_{payment_id}"
             )
 
-
-            # -------------------------------------------------
-            # YEAR
-            # -------------------------------------------------
-
             edit_year_options = years.copy()
-
 
             if old_year not in edit_year_options:
 
@@ -2120,13 +1839,11 @@ elif page == "Edit/Delete Payment":
 
                 edit_year_options.sort()
 
-
             old_year_index = (
                 edit_year_options.index(
                     old_year
                 )
             )
-
 
             edit_year = st.selectbox(
                 "📅 Year",
@@ -2135,84 +1852,34 @@ elif page == "Edit/Delete Payment":
                 key=f"edit_year_{payment_id}"
             )
 
-
-            # -------------------------------------------------
-            # AMOUNT
-            # -------------------------------------------------
+            st.info(
+                f"The student's required full payment is "
+                f"**Rs. {student_fee:,.0f}**."
+            )
 
             edit_amount = st.number_input(
                 "💵 Payment Amount",
                 min_value=0.0,
-                value=float(old_amount),
+                value=float(student_fee),
                 step=500.0,
                 key=f"edit_amount_{payment_id}"
             )
-
-
-            # -------------------------------------------------
-            # GET STUDENT FEE
-            # -------------------------------------------------
-
-            student_fee = 0
-
-
-            if student_id is not None:
-
-                fee_response = (
-                    supabase
-                    .table("students")
-                    .select("monthly_fee")
-                    .eq(
-                        "id",
-                        student_id
-                    )
-                    .limit(1)
-                    .execute()
-                )
-
-
-                fee_data = (
-                    fee_response.data or []
-                )
-
-
-                if fee_data:
-
-                    student_fee = (
-                        fee_data[0]["monthly_fee"]
-                        or 0
-                    )
-
-
-            # -------------------------------------------------
-            # PAYMENT STATUS
-            # -------------------------------------------------
 
             if (
                 student_fee > 0
                 and edit_amount >= student_fee
             ):
 
-                edit_status = "Paid"
-
-            elif edit_amount > 0:
-
-                edit_status = "Partial"
+                st.success(
+                    "✅ Payment Status: Paid"
+                )
 
             else:
 
-                edit_status = "Unpaid"
-
-
-            st.info(
-                f"Payment Status: "
-                f"**{edit_status}**"
-            )
-
-
-            # -------------------------------------------------
-            # PAYMENT DATE
-            # -------------------------------------------------
+                st.warning(
+                    "⚠️ Payment must equal the "
+                    "full monthly fee."
+                )
 
             try:
 
@@ -2230,12 +1897,14 @@ elif page == "Edit/Delete Payment":
                         date.today()
                     )
 
-            except (ValueError, TypeError):
+            except (
+                ValueError,
+                TypeError
+            ):
 
                 payment_date_value = (
                     date.today()
                 )
-
 
             edit_payment_date = st.date_input(
                 "📅 Payment Date",
@@ -2243,41 +1912,38 @@ elif page == "Edit/Delete Payment":
                 key=f"edit_date_{payment_id}"
             )
 
-
             st.divider()
-
 
             col1, col2 = st.columns(2)
 
-
-            # =================================================
-            # UPDATE PAYMENT
-            # =================================================
+            # -------------------------------------------------
+            # UPDATE
+            # -------------------------------------------------
 
             with col1:
 
                 if st.button(
                     "💾 Update Payment",
                     use_container_width=True,
-                    key=(
-                        f"update_payment_"
-                        f"{payment_id}"
-                    )
+                    key=f"update_payment_{payment_id}"
                 ):
 
-                    if edit_amount <= 0:
+                    if student_fee <= 0:
 
                         st.error(
-                            "Payment amount must be "
-                            "greater than 0."
+                            "Student monthly fee "
+                            "must be greater than 0."
                         )
 
+                    elif edit_amount != student_fee:
+
+                        st.error(
+                            f"Please enter the complete "
+                            f"monthly fee: "
+                            f"Rs. {student_fee:,.0f}"
+                        )
 
                     else:
-
-                        # -------------------------------------
-                        # CHECK DUPLICATE
-                        # -------------------------------------
 
                         duplicate_response = (
                             supabase
@@ -2303,94 +1969,82 @@ elif page == "Edit/Delete Payment":
                             .execute()
                         )
 
-
                         duplicate_data = (
                             duplicate_response.data
                             or []
                         )
 
-
-                        duplicate_payment = (
-                            duplicate_data[0]
-                            if duplicate_data
-                            else None
-                        )
-
-
-                        if duplicate_payment:
+                        if duplicate_data:
 
                             st.error(
-                                "❌ Another payment "
-                                "already exists for "
-                                "this student, month "
-                                "and year. Please "
-                                "choose another "
-                                "month/year."
+                                "❌ Another payment already "
+                                "exists for this student, "
+                                "month and year."
                             )
-
 
                         else:
 
-                            # ---------------------------------
-                            # UPDATE PAYMENT
-                            # ---------------------------------
-
-                            supabase.table(
-                                "payments"
-                            ).update({
-                                "month": edit_month,
-                                "year": edit_year,
-                                "amount": edit_amount,
-                                "status": edit_status,
-                                "payment_date": (
-                                    edit_payment_date
-                                    .isoformat()
+                            (
+                                supabase
+                                .table("payments")
+                                .update({
+                                    "month": edit_month,
+                                    "year": edit_year,
+                                    "amount": student_fee,
+                                    "status": "Paid",
+                                    "payment_date": (
+                                        edit_payment_date
+                                        .isoformat()
+                                    )
+                                })
+                                .eq(
+                                    "id",
+                                    payment_id
                                 )
-                            }).eq(
-                                "id",
-                                payment_id
-                            ).execute()
-
+                                .execute()
+                            )
 
                             st.success(
                                 "✅ Payment updated "
                                 "successfully!"
                             )
 
-
                             st.rerun()
 
-
-            # =================================================
-            # DELETE PAYMENT
-            # =================================================
+            # -------------------------------------------------
+            # DELETE
+            # -------------------------------------------------
 
             with col2:
 
                 if st.button(
                     "🗑️ Delete Payment",
                     use_container_width=True,
-                    key=(
-                        f"delete_payment_"
-                        f"{payment_id}"
-                    )
+                    key=f"delete_payment_{payment_id}"
                 ):
 
-                    supabase.table(
-                        "payments"
-                    ).delete().eq(
-                        "id",
-                        payment_id
-                    ).execute()
+                    try:
 
+                        (
+                            supabase
+                            .table("payments")
+                            .delete()
+                            .eq(
+                                "id",
+                                payment_id
+                            )
+                            .execute()
+                        )
 
-                    st.success(
-                        "🗑️ Payment deleted "
-                        "successfully!"
-                    )
+                        st.success(
+                            "🗑️ Payment deleted "
+                            "successfully!"
+                        )
 
+                        st.rerun()
 
-                    st.rerun()
+                    except Exception as e:
 
-                    st.write("Supabase URL loaded:", bool(st.secrets["SUPABASE_URL"]))
-st.write("Supabase KEY loaded:", bool(st.secrets["SUPABASE_KEY"]))
+                        st.error(
+                            f"❌ Payment could not be deleted: {e}"
+                        )
