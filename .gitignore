@@ -1,3 +1,5 @@
 .streamlit/secrets.toml
 fees.db
-__pycache__/
+__pycache__/  
+test_receipt.pdf
+test_receipt.py
